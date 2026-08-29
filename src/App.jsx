@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { UploadCloud, KeyRound, Clock, ShieldCheck, Zap, Sparkles } from 'lucide-react';
+import { UploadCloud, KeyRound, Clock, ShieldCheck, Sparkles } from 'lucide-react';
 import { Navbar } from './components/Navbar';
 import { UploadForm } from './components/UploadForm';
 import { ShareResultCard } from './components/ShareResultCard';
 import { RetrieveForm } from './components/RetrieveForm';
 import { ActiveTransfers } from './components/ActiveTransfers';
 import { Toast } from './components/Toast';
+import { fetchServerStats, deleteShareableItem } from './services/apiService';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('send'); // 'send', 'receive', 'active'
@@ -24,34 +25,28 @@ export default function App() {
       setActiveTab('receive');
     }
 
-    // Load saved session uploads from localStorage
     const saved = localStorage.getItem('chronoshare_session_uploads');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Filter out expired items
         const valid = parsed.filter((item) => Date.now() < item.expiresAt);
         setSessionUploads(valid);
       } catch (e) {}
     }
 
-    fetchStats();
-    const statsInterval = setInterval(fetchStats, 10000);
+    loadStats();
+    const statsInterval = setInterval(loadStats, 10000);
     return () => clearInterval(statsInterval);
   }, []);
 
-  // Sync session uploads to localStorage
   useEffect(() => {
     localStorage.setItem('chronoshare_session_uploads', JSON.stringify(sessionUploads));
   }, [sessionUploads]);
 
-  const fetchStats = async () => {
+  const loadStats = async () => {
     try {
-      const response = await fetch('/api/stats');
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
-      }
+      const data = await fetchServerStats();
+      if (data) setStats(data);
     } catch (e) {}
   };
 
@@ -66,7 +61,7 @@ export default function App() {
   const handleUploadSuccess = (result) => {
     setCurrentResult(result);
     setSessionUploads((prev) => [result, ...prev]);
-    fetchStats();
+    loadStats();
     showToast(`Upload complete! Share code: ${result.code}`);
   };
 
@@ -76,20 +71,14 @@ export default function App() {
 
   const handleDeleteItem = async (code, deleteToken) => {
     try {
-      const response = await fetch(`/api/delete/${code}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deleteToken }),
-      });
-
-      const res = await response.json();
-      if (response.ok && res.success) {
+      const res = await deleteShareableItem(code, deleteToken);
+      if (res.success) {
         showToast('File destroyed permanently.');
         setSessionUploads((prev) => prev.filter((item) => item.code !== code));
         if (currentResult?.code === code) {
           setCurrentResult(null);
         }
-        fetchStats();
+        loadStats();
       } else {
         showToast(res.error || 'Failed to destroy file.');
       }
@@ -100,7 +89,7 @@ export default function App() {
 
   return (
     <div className="app-wrapper">
-      <Navbar stats={stats} onRefreshStats={fetchStats} />
+      <Navbar stats={stats} onRefreshStats={loadStats} />
 
       {/* Hero Header */}
       <div className="hero-title">

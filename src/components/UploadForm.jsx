@@ -1,5 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, Lock, X, File, Image, Music, Video, Archive, Code, CheckCircle2 } from 'lucide-react';
+import { UploadCloud, FileText, Lock, X, CheckCircle2 } from 'lucide-react';
+import { formatFileSize, getFileIcon } from '../utils/fileHelpers';
+import { uploadShareableItem } from '../services/apiService';
 
 export function UploadForm({ onUploadSuccess, showToast }) {
   const [mode, setMode] = useState('file'); // 'file' or 'text'
@@ -43,24 +45,6 @@ export function UploadForm({ onUploadSuccess, showToast }) {
     }
   };
 
-  const formatFileSize = (bytes) => {
-    if (!bytes) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const getFileIcon = (mimeType) => {
-    if (!mimeType) return <File size={28} />;
-    if (mimeType.startsWith('image/')) return <Image size={28} />;
-    if (mimeType.startsWith('audio/')) return <Music size={28} />;
-    if (mimeType.startsWith('video/')) return <Video size={28} />;
-    if (mimeType.includes('zip') || mimeType.includes('tar') || mimeType.includes('rar')) return <Archive size={28} />;
-    if (mimeType.includes('json') || mimeType.includes('javascript') || mimeType.includes('html') || mimeType.includes('css')) return <Code size={28} />;
-    return <File size={28} />;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -90,23 +74,17 @@ export function UploadForm({ onUploadSuccess, showToast }) {
       formData.append('textContent', textContent);
     }
 
-    // Simulate progress animation
     const progressInterval = setInterval(() => {
       setUploadProgress((prev) => (prev >= 90 ? 90 : prev + 15));
     }, 150);
 
     try {
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      const result = await uploadShareableItem(formData);
 
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      const result = await response.json();
-
-      if (response.ok && result.success) {
+      if (result.success) {
         setTimeout(() => {
           setIsUploading(false);
           setUploadProgress(0);

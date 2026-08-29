@@ -1,39 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { Copy, Clock, ShieldAlert, Trash2, Check, ExternalLink, RefreshCw } from 'lucide-react';
+import React, { useState } from 'react';
+import { Copy, Clock, ShieldAlert, Trash2, Check, RefreshCw } from 'lucide-react';
 import { QRCodeDisplay } from './QRCodeDisplay';
+import { useCountdown } from '../hooks/useCountdown';
+import { formatMinutesSeconds } from '../utils/fileHelpers';
+import { deleteShareableItem } from '../services/apiService';
 
 export function ShareResultCard({ shareData, onReset, showToast, onDeleteSuccess }) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [remainingSeconds, setRemainingSeconds] = useState(shareData.expiresInSeconds || 900);
-  const [isExpired, setIsExpired] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Generate full shareable URL
+  const { remainingSeconds, isExpired, isUrgent } = useCountdown(shareData.expiresAt);
+
   const shareUrl = `${window.location.origin}${window.location.pathname}?code=${shareData.code}`;
-
-  // Live countdown timer hook
-  useEffect(() => {
-    const calculateTimeLeft = () => {
-      const diff = Math.floor((shareData.expiresAt - Date.now()) / 1000);
-      if (diff <= 0) {
-        setRemainingSeconds(0);
-        setIsExpired(true);
-      } else {
-        setRemainingSeconds(diff);
-      }
-    };
-
-    calculateTimeLeft();
-    const timer = setInterval(calculateTimeLeft, 1000);
-    return () => clearInterval(timer);
-  }, [shareData.expiresAt]);
-
-  const formatMinutesSeconds = (secs) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(shareData.code);
@@ -56,14 +35,9 @@ export function ShareResultCard({ shareData, onReset, showToast, onDeleteSuccess
 
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/delete/${shareData.code}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deleteToken: shareData.deleteToken }),
-      });
+      const result = await deleteShareableItem(shareData.code, shareData.deleteToken);
 
-      const result = await response.json();
-      if (response.ok && result.success) {
+      if (result.success) {
         showToast('File self-destructed successfully!');
         if (onDeleteSuccess) onDeleteSuccess(shareData.code);
         onReset();
@@ -78,7 +52,6 @@ export function ShareResultCard({ shareData, onReset, showToast, onDeleteSuccess
     }
   };
 
-  // Format code into 2 chunks of 3 digits e.g. "784" and "912"
   const digits = shareData.code.split('');
 
   return (
@@ -117,8 +90,8 @@ export function ShareResultCard({ shareData, onReset, showToast, onDeleteSuccess
       </div>
 
       {/* Live Countdown Timer */}
-      <div className={`countdown-box ${remainingSeconds < 180 ? 'urgent' : ''}`}>
-        <Clock size={22} className={remainingSeconds < 180 ? 'animate-pulse' : ''} />
+      <div className={`countdown-box ${isUrgent ? 'urgent' : ''}`}>
+        <Clock size={22} className={isUrgent ? 'animate-pulse' : ''} />
         <span>
           {isExpired ? 'FILE EXPIRED & PURGED' : `Self-Destruct in ${formatMinutesSeconds(remainingSeconds)}`}
         </span>

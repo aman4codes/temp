@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { KeyRound, Download, FileText, Lock, Clock, ShieldAlert, ArrowRight, File, Image, Music, Video, Archive, Code, Copy, Check } from 'lucide-react';
+import { KeyRound, Download, FileText, Lock, Clock, ShieldAlert, ArrowRight, File, Copy, Check } from 'lucide-react';
+import { formatFileSize, formatMinutesSeconds, getFileIcon } from '../utils/fileHelpers';
+import { fetchFileMetadata as apiGetMetadata, downloadShareableItem } from '../services/apiService';
+import { useCountdown } from '../hooks/useCountdown';
 
 export function RetrieveForm({ initialCode, showToast }) {
   const [digits, setDigits] = useState(['', '', '', '', '', '']);
@@ -9,15 +12,12 @@ export function RetrieveForm({ initialCode, showToast }) {
   const [fileData, setFileData] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   
-  // Password state if file is protected
   const [password, setPassword] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
 
-  // Live timer for claimed file
-  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const { remainingSeconds, isExpired } = useCountdown(fileData?.expiresAt);
 
-  // Auto-populate from URL if code present
   useEffect(() => {
     if (initialCode && initialCode.length === 6) {
       const codeArray = initialCode.split('');
@@ -27,33 +27,22 @@ export function RetrieveForm({ initialCode, showToast }) {
   }, [initialCode]);
 
   useEffect(() => {
-    if (!fileData) return;
-
-    const timer = setInterval(() => {
-      const remaining = Math.max(0, Math.floor((fileData.expiresAt - Date.now()) / 1000));
-      setRemainingSeconds(remaining);
-      if (remaining <= 0) {
-        setErrorMsg('This file has expired and been automatically purged.');
-        setFileData(null);
-      }
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [fileData]);
+    if (isExpired && fileData) {
+      setErrorMsg('This file has expired and been automatically purged.');
+      setFileData(null);
+    }
+  }, [isExpired, fileData]);
 
   const handleDigitChange = (index, value) => {
-    // Only allow numbers or letters
     const val = value.toUpperCase().slice(-1);
     const newDigits = [...digits];
     newDigits[index] = val;
     setDigits(newDigits);
 
-    // Auto-advance cursor
     if (val && index < 5) {
       inputRefs[index + 1].current?.focus();
     }
 
-    // Auto trigger lookup when all 6 filled
     const fullCode = newDigits.join('');
     if (fullCode.length === 6) {
       fetchFileMetadata(fullCode);
@@ -88,12 +77,10 @@ export function RetrieveForm({ initialCode, showToast }) {
     setFileData(null);
 
     try {
-      const response = await fetch(`/api/file/${code}`);
-      const result = await response.json();
+      const result = await apiGetMetadata(code);
 
-      if (response.ok && !result.expired) {
+      if (!result.expired) {
         setFileData(result);
-        setRemainingSeconds(result.remainingSeconds);
       } else {
         setErrorMsg(result.error || 'File not found or expired.');
       }
@@ -116,11 +103,7 @@ export function RetrieveForm({ initialCode, showToast }) {
     setIsDownloading(true);
 
     try {
-      const response = await fetch(`/api/download/${fileData.code}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
+      const response = await downloadShareableItem(fileData.code, password);
 
       if (!response.ok) {
         const errorResult = await response.json();
@@ -134,7 +117,6 @@ export function RetrieveForm({ initialCode, showToast }) {
         setFileData((prev) => ({ ...prev, textContent: textResult.textContent }));
         showToast('Text content unlocked!');
       } else {
-        // Blob download for binary files
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -161,20 +143,6 @@ export function RetrieveForm({ initialCode, showToast }) {
       showToast('Text snippet copied to clipboard!');
       setTimeout(() => setCopiedText(false), 2000);
     }
-  };
-
-  const formatFileSize = (bytes) => {
-    if (!bytes) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const formatMinutesSeconds = (secs) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -232,7 +200,7 @@ export function RetrieveForm({ initialCode, showToast }) {
           <div className="file-selected-box" style={{ background: 'rgba(10, 16, 30, 0.8)' }}>
             <div className="file-info">
               <div className="file-icon">
-                {fileData.type === 'text' ? <FileText size={26} /> : <File size={26} />}
+                {fileData.type === 'text' ? <FileText size={26} /> : getFileIcon(fileData.mimeType, 26)}
               </div>
               <div>
                 <div className="file-meta-name" title={fileData.originalName}>
