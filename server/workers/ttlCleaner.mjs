@@ -1,24 +1,34 @@
 import fs from 'fs';
 import { storeService } from '../services/storeService.mjs';
+import { shareController } from '../controllers/shareController.mjs';
+
+const POLL_INTERVAL_MS = 5_000; // Every 5 seconds
 
 /**
- * Background TTL Worker - Runs every 5 seconds checking for expired items (>15 mins)
+ * Background TTL Worker.
+ * Polls the in-memory store every 5 seconds and purges items whose
+ * expiresAt timestamp has passed.
+ *
+ * Uses shareController._purgeItem so disk deletion and store removal
+ * are always handled atomically in one place.
  */
 export function startTTLWorker() {
-  setInterval(() => {
+  let timer;
+
+  const sweep = () => {
     const now = Date.now();
     for (const [code, item] of storeService.entries()) {
       if (now >= item.expiresAt) {
-        if (item.type === 'file' && item.filePath && fs.existsSync(item.filePath)) {
-          try {
-            fs.unlinkSync(item.filePath);
-            console.log(`[TTL Worker] Expired file deleted: ${item.filePath} (Code: ${code})`);
-          } catch (err) {
-            console.error(`[TTL Worker] Failed to delete file ${item.filePath}:`, err);
-          }
-        }
-        storeService.delete(code);
+        shareController._purgeItem(code, item, 'ttl-worker');
       }
     }
-  }, 5000);
+  };
+
+  // Start background sweep
+  timer = setInterval(sweep, POLL_INTERVAL_MS);
+
+  // Allow Node.js to exit even if the timer is still running
+  if (timer.unref) timer.unref();
+
+  console.log(`[TTL Worker] Started — sweeping every ${POLL_INTERVAL_MS / 1000}s`);
 }

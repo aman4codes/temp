@@ -9,11 +9,21 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server/index.mjs"
+    "start": "node server/index.mjs",
+    "test": "vitest run tests/",
+    "test:watch": "vitest watch tests/",
+    "test:coverage": "vitest run --coverage tests/"
+  },
+  "vitest": {
+    "environment": "node",
+    "testTimeout": 15000
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
     "lucide-react": "^0.395.0",
     "multer": "^1.4.5-lts.1",
     "qrcode": "^1.5.3",
@@ -24,7 +34,10 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "@vitest/coverage-v8": "^4.1.11",
     "concurrently": "^8.2.2",
-    "vite": "^5.3.1"
+    "supertest": "^7.2.2",
+    "vite": "^5.3.1",
+    "vitest": "^4.1.11"
   }
 }
